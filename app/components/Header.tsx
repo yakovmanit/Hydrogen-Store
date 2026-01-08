@@ -1,4 +1,4 @@
-import {Suspense} from 'react';
+import {Suspense, useEffect, useState} from 'react';
 import {Await, NavLink, useAsyncValue} from 'react-router';
 import {
   type CartViewPayload,
@@ -7,6 +7,8 @@ import {
 } from '@shopify/hydrogen';
 import type {HeaderQuery, CartApiQueryFragment} from 'storefrontapi.generated';
 import {useAside} from '~/components/Aside';
+import {cn} from '~/lib/utils';
+import {Menu, Search, ShoppingCart} from 'lucide-react';
 
 interface HeaderProps {
   header: HeaderQuery;
@@ -24,19 +26,58 @@ export function Header({
   publicStoreDomain,
 }: HeaderProps) {
   const {shop, menu} = header;
+
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isScrollingUp, setIsScrollingUp] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const {type: asideType} = useAside();
+
+  useEffect(() => {
+    const root = document.documentElement;
+
+    root.style.setProperty('--announcement-height', isScrolled ? '0px' : '40px');
+    root.style.setProperty('--header-height', isScrolled ? '64px' : '80px');
+
+    const handleScroll = () => {
+      if (asideType !== 'closed') return;
+
+      const currentScrollY = window.scrollY;
+
+      setIsScrollingUp(currentScrollY < lastScrollY);
+      setLastScrollY(currentScrollY);
+
+      setIsScrolled(currentScrollY > 50);
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => window.removeEventListener('scroll', handleScroll);
+
+  }, [asideType, isScrolled, lastScrollY])
+
   return (
-    <header className="header">
-      <NavLink prefetch="intent" to="/" style={activeLinkStyle} end>
-        <strong>{shop.name}</strong>
-      </NavLink>
-      <HeaderMenu
-        menu={menu}
-        viewport="desktop"
-        primaryDomainUrl={header.shop.primaryDomain.url}
-        publicStoreDomain={publicStoreDomain}
-      />
-      <HeaderCtas isLoggedIn={isLoggedIn} cart={cart} />
-    </header>
+    <div
+      className={cn(`fixed w-full z-1 transition-transform duration-300 ease-in-out`, {
+        "-translate-y-full": !isScrollingUp && isScrolled && asideType === 'closed',
+      })}
+    >
+      <header className="header max-w-[1440px] mx-auto px-4 md:px-8">
+        <HeaderMenuMobileToggle className="p-2 pr-4 -ml-2" />
+
+        <NavLink prefetch="intent" to="/" style={activeLinkStyle} end>
+          <strong>{shop.name}</strong>
+        </NavLink>
+
+        <HeaderMenu
+          menu={menu}
+          viewport="desktop"
+          primaryDomainUrl={header.shop.primaryDomain.url}
+          publicStoreDomain={publicStoreDomain}
+        />
+
+        <HeaderCtas isLoggedIn={isLoggedIn} cart={cart} />
+      </header>
+    </div>
   );
 }
 
@@ -101,7 +142,6 @@ function HeaderCtas({
 }: Pick<HeaderProps, 'isLoggedIn' | 'cart'>) {
   return (
     <nav className="header-ctas" role="navigation">
-      <HeaderMenuMobileToggle />
       <NavLink prefetch="intent" to="/account" style={activeLinkStyle}>
         <Suspense fallback="Sign in">
           <Await resolve={isLoggedIn} errorElement="Sign in">
@@ -115,14 +155,14 @@ function HeaderCtas({
   );
 }
 
-function HeaderMenuMobileToggle() {
+function HeaderMenuMobileToggle({ className }: { className?: string}) {
   const {open} = useAside();
   return (
     <button
-      className="header-menu-mobile-toggle reset"
+      className={cn("header-menu-mobile-toggle reset", className)}
       onClick={() => open('mobile')}
     >
-      <h3>☰</h3>
+      <Menu />
     </button>
   );
 }
@@ -130,8 +170,8 @@ function HeaderMenuMobileToggle() {
 function SearchToggle() {
   const {open} = useAside();
   return (
-    <button className="reset" onClick={() => open('search')}>
-      Search
+    <button className="reset cursor-pointer p-2" onClick={() => open('search')}>
+      <Search strokeWidth={2} size={24} />
     </button>
   );
 }
@@ -142,6 +182,7 @@ function CartBadge({count}: {count: number | null}) {
 
   return (
     <a
+      className="relative p-2"
       href="/cart"
       onClick={(e) => {
         e.preventDefault();
@@ -154,7 +195,11 @@ function CartBadge({count}: {count: number | null}) {
         } as CartViewPayload);
       }}
     >
-      Cart {count === null ? <span>&nbsp;</span> : count}
+      <ShoppingCart strokeWidth={2} size={24} />
+
+      <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black text-xs text-white">
+        {count === null ? <span>&nbsp;</span> : count}
+      </span>
     </a>
   );
 }
